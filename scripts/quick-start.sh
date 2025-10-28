@@ -34,7 +34,7 @@ echo ""
 
 # Step 2: Create namespace
 echo "📦 Creating namespace..."
-kubectl create namespace timvault-operator-system --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f config/manager/namespace.yaml
 echo "✅ Namespace created"
 echo ""
 

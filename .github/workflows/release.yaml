@@ -64,18 +64,21 @@ jobs:
           # TimVault Operator Installation
           # Version: ${{ github.ref_name }}
           # 
-          # Installation order:
+          # Installation order (critical for success):
           # 1. CRDs (must be first)
-          # 2. Namespace (from deployment.yaml)
-          # 3. RBAC (Role, then ServiceAccount, then RoleBinding)
-          # 4. Deployment
+          # 2. Namespace (must exist before ServiceAccount)
+          # 3. ClusterRole (namespace-independent)
+          # 4. ServiceAccount (depends on namespace)
+          # 5. ClusterRoleBinding (depends on ServiceAccount)
+          # 6. Deployment (depends on ServiceAccount)
           
           ---
           $(cat config/crd/timsecret-crd.yaml)
           ---
           $(cat config/crd/timsecretconfig-crd.yaml)
           ---
-          # Namespace is included in deployment.yaml below
+          $(cat config/manager/namespace.yaml)
+          ---
           $(cat config/rbac/role.yaml)
           ---
           $(cat config/rbac/service_account.yaml)
