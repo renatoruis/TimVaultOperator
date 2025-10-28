@@ -1,0 +1,66 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: timvault-operator-role
+rules:
+  # TimSecret resources
+  - apiGroups:
+      - secrets.tim.operator
+    resources:
+      - timsecrets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - secrets.tim.operator
+    resources:
+      - timsecrets/status
+    verbs:
+      - get
+      - update
+      - patch
+  - apiGroups:
+      - secrets.tim.operator
+    resources:
+      - timsecrets/finalizers
+    verbs:
+      - update
+  # TimSecretConfig resources
+  - apiGroups:
+      - secrets.tim.operator
+    resources:
+      - timsecretconfigs
+    verbs:
+      - get
+      - list
+      - watch
+  # Secrets
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  # Deployments
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    verbs:
+      - get
+      - list
+      - watch
+      - update
+      - patch
+
