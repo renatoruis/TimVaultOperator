@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: timvaultoperator
 
 jobs:
   build-and-push:
@@ -34,12 +34,20 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest
+      
+      - name: Set image tag for manifest
+        id: image
+        run: |
+          # Extract version without 'v' prefix
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "tag=ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -85,7 +93,7 @@ jobs:
           ---
           $(cat config/rbac/role_binding.yaml)
           ---
-          $(cat config/manager/deployment.yaml | sed "s|image: timvault-operator:latest|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}|g")
+          $(cat config/manager/deployment.yaml | sed "s|image: timvault-operator:latest|image: ${{ steps.image.outputs.tag }}|g")
           EOF
           
           # Create examples bundle
@@ -117,7 +125,7 @@ jobs:
 
             ### Docker Image
             ```
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+            ${{ steps.image.outputs.tag }}
             ```
 
             ## What's Changed
