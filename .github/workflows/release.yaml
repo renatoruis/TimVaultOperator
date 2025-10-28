@@ -59,19 +59,26 @@ jobs:
           cp config/crd/timsecret-crd.yaml release/
           cp config/crd/timsecretconfig-crd.yaml release/
           
-          # Create install manifest
+          # Create install manifest with proper order
           cat > release/install.yaml <<EOF
           # TimVault Operator Installation
           # Version: ${{ github.ref_name }}
+          # 
+          # Installation order:
+          # 1. CRDs (must be first)
+          # 2. Namespace (from deployment.yaml)
+          # 3. RBAC (Role, then ServiceAccount, then RoleBinding)
+          # 4. Deployment
           
           ---
           $(cat config/crd/timsecret-crd.yaml)
           ---
           $(cat config/crd/timsecretconfig-crd.yaml)
           ---
-          $(cat config/rbac/service_account.yaml)
-          ---
+          # Namespace is included in deployment.yaml below
           $(cat config/rbac/role.yaml)
+          ---
+          $(cat config/rbac/service_account.yaml)
           ---
           $(cat config/rbac/role_binding.yaml)
           ---

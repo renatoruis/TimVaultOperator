@@ -38,3 +38,4 @@ kubeconfig
 # Release artifacts
 release/
 dist/
+install.yaml
