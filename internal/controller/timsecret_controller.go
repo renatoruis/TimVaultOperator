@@ -32,6 +32,8 @@ type TimSecretReconciler struct {
 // +kubebuilder:rbac:groups=secrets.tim.operator,resources=timsecretconfigs,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *TimSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

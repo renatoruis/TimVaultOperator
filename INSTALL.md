@@ -46,6 +46,22 @@ kubectl apply -f config/rbac/role_binding.yaml
 kubectl apply -f config/manager/deployment.yaml
 ```
 
+## RBAC Permissions
+
+The operator requires the following permissions:
+
+### Custom Resources
+- `timsecrets.secrets.tim.operator` - Full access to manage TimSecret resources
+- `timsecretconfigs.secrets.tim.operator` - Read access to TimSecretConfig resources
+
+### Core Kubernetes Resources
+- `secrets` - Full access to create and manage Secrets
+- `deployments` (apps) - Update access to restart deployments
+- `events` - Create/patch for logging events
+
+### Leader Election
+- `leases` (coordination.k8s.io) - Full access for leader election when running multiple replicas
+
 ## Verification
 
 Check that everything is running:

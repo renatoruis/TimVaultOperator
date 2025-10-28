@@ -63,4 +63,25 @@ rules:
       - watch
       - update
       - patch
+  # Leader Election (coordination.k8s.io)
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  # Events (for logging)
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
 
