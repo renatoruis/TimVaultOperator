@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"sort"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -14,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	secretsv1alpha1 "github.com/renatoruis/timvault-operator/api/v1alpha1"
@@ -77,6 +79,13 @@ func (r *TimSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Calculate hash of secret data
 	newHash := calculateHash(secretData)
+	oldHash := timSecret.Status.SecretHash
+
+	// Log hash comparison for debugging
+	logger.V(1).Info("Hash comparison",
+		"oldHash", oldHash,
+		"newHash", newHash,
+		"changed", oldHash != newHash)
 
 	// Determine namespace
 	namespace := timSecret.Spec.Namespace
@@ -230,12 +239,20 @@ func (r *TimSecretReconciler) updateCondition(ctx context.Context, ts *secretsv1
 	_ = r.Status().Update(ctx, ts)
 }
 
-// calculateHash calculates SHA256 hash of secret data
+// calculateHash calculates SHA256 hash of secret data with deterministic ordering
 func calculateHash(data map[string]string) string {
+	// Sort keys to ensure deterministic hash
+	keys := make([]string, 0, len(data))
+	for k := range data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	// Calculate hash with sorted keys
 	h := sha256.New()
-	for k, v := range data {
+	for _, k := range keys {
 		h.Write([]byte(k))
-		h.Write([]byte(v))
+		h.Write([]byte(data[k]))
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
@@ -338,5 +355,8 @@ func (r *TimSecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&secretsv1alpha1.TimSecret{}).
 		Owns(&corev1.Secret{}).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: 10, // Process 10 TimSecrets in parallel
+		}).
 		Complete(r)
 }
