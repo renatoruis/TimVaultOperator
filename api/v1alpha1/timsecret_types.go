@@ -36,6 +36,13 @@ type TimSecretSpec struct {
 	// Namespace is the namespace where the secret and deployment are located
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
+
+	// SyncInterval is the interval between syncs from Vault
+	// Default is 5m (5 minutes)
+	// Format: duration string (e.g. "1m", "30s", "5m")
+	// +optional
+	// +kubebuilder:default="5m"
+	SyncInterval string `json:"syncInterval,omitempty"`
 }
 
 // TimSecretStatus defines the observed state of TimSecret
@@ -51,6 +58,14 @@ type TimSecretStatus struct {
 	// Conditions represent the latest available observations of the TimSecret's state
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// RetryCount is the number of consecutive failed sync attempts
+	// +optional
+	RetryCount int `json:"retryCount,omitempty"`
+
+	// LastError is the last error encountered during sync
+	// +optional
+	LastError string `json:"lastError,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -11,9 +11,11 @@ A simple and powerful Kubernetes operator exclusively designed to work with Hash
 - **Automatic Sync**: Creates and updates Kubernetes Secrets with data from Vault
 - **Deployment Restart**: Automatically restarts specified deployments when secrets are updated
 - **Change Detection**: Uses hash-based change detection to avoid unnecessary restarts
-- **Periodic Sync**: Re-syncs secrets every 5 minutes to keep them up to date
+- **Customizable Sync Interval**: Configure sync frequency per TimSecret (default: 5m, range: 30s-1h)
+- **Automatic Retry with Backoff**: Intelligent retry mechanism with exponential backoff on failures
 - **KV Support**: Works with both Vault KV v1 and KV v2 engines
 - **Cross-Namespace**: Reference Vault configuration from any namespace
+- **Status Tracking**: Monitor sync status, retry count, and last error in resource status
 
 ## Installation
 
@@ -194,6 +196,80 @@ spec:
 
 **Note:** Direct values override TimSecretConfig if both are specified.
 
+## Advanced Features
+
+### Custom Sync Interval
+
+Control how often secrets are synced from Vault (default: 5 minutes):
+
+```yaml
+apiVersion: secrets.tim.operator/v1alpha1
+kind: TimSecret
+metadata:
+  name: myapp-secrets
+spec:
+  vaultConfig: vault-config
+  vaultConfigNamespace: vault-system
+  vaultPath: "secret/data/myapp"
+  secretName: "myapp-secrets"
+  
+  # Custom sync interval
+  syncInterval: "2m"  # Sync every 2 minutes
+```
+
+**Valid formats:**
+- Seconds: `"30s"`, `"45s"`
+- Minutes: `"1m"`, `"5m"`, `"10m"`
+- Hours: `"1h"`
+
+**Constraints:**
+- Minimum: `30s` (to avoid excessive load on Vault)
+- Maximum: `1h` (to ensure timely updates)
+- Default: `5m`
+- Invalid values fallback to `5m`
+
+**Use Cases:**
+- **Development**: `"30s"` or `"1m"` for rapid iteration
+- **Production**: `"5m"` to `"10m"` for stability
+- **Low-priority apps**: `"30m"` to `"1h"` to reduce load
+
+### Automatic Retry with Exponential Backoff
+
+The operator automatically retries failed operations with intelligent backoff:
+
+**Retry Strategy:**
+1. **First retry**: 10 seconds
+2. **Second retry**: 20 seconds (10s × 2)
+3. **Third retry**: 40 seconds (20s × 2)
+4. **Fourth retry**: 80 seconds (40s × 2)
+5. **Continues** with exponential backoff up to the configured `syncInterval`
+
+**Status Tracking:**
+
+```bash
+kubectl get timsecret myapp-secrets -o yaml
+```
+
+```yaml
+status:
+  lastSyncTime: "2024-10-28T23:45:00Z"
+  secretHash: "abc123..."
+  retryCount: 2
+  lastError: "Get http://vault:8200/v1/secret/data/myapp: dial tcp: connect: connection refused"
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: VaultSecretFetchFailed
+      message: "Retry 2/10: connection refused"
+```
+
+**Benefits:**
+- ✅ Automatic recovery from transient failures
+- ✅ No manual intervention needed
+- ✅ Exponential backoff prevents overwhelming Vault
+- ✅ Visibility into retry status
+- ✅ Resets retry count on successful sync
+
 ## API Reference
 
 ### TimSecretConfig
@@ -203,7 +279,7 @@ spec:
 | `vaultURL` | string | Yes | Vault server URL |
 | `vaultToken` | string | Yes | Vault authentication token |
 
-### TimSecret
+### TimSecret Spec
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -215,8 +291,19 @@ spec:
 | `secretName` | string | Yes | Name of Kubernetes Secret to create |
 | `deploymentName` | string | No | Deployment to restart when secrets change |
 | `namespace` | string | No | Namespace for secret/deployment (defaults to TimSecret's namespace) |
+| `syncInterval` | string | No | Sync interval (e.g., "30s", "5m", "1h"). Default: "5m", Min: "30s", Max: "1h" |
 
 \* Either `vaultConfig` or both `vaultURL` and `vaultToken` must be specified.
+
+### TimSecret Status
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `lastSyncTime` | timestamp | Last successful sync time |
+| `secretHash` | string | SHA256 hash of secret data (for change detection) |
+| `retryCount` | int | Number of consecutive failed sync attempts |
+| `lastError` | string | Last error message (if any) |
+| `conditions` | array | Kubernetes standard conditions (Ready, etc.) |
 
 ## Examples
 
@@ -224,6 +311,7 @@ All examples are available in the [`examples/`](examples/) directory:
 
 - **`timsecretconfig-example.yaml`** - Centralized Vault configuration
 - **`timsecret-with-config.yaml`** - TimSecret using centralized config
+- **`timsecret-with-sync-interval.yaml`** - TimSecret with custom sync interval
 - **`timsecret-example.yaml`** - TimSecret with direct values
 - **`deployment-example.yaml`** - Sample deployment using secrets
 

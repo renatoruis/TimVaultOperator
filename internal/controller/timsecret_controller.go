@@ -51,32 +51,28 @@ func (r *TimSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
+	// Parse sync interval (default 5 minutes)
+	syncInterval := r.parseSyncInterval(timSecret.Spec.SyncInterval)
+
 	// Resolve Vault configuration
 	vaultURL, vaultToken, err := r.resolveVaultConfig(ctx, timSecret)
 	if err != nil {
 		logger.Error(err, "Failed to resolve Vault configuration")
-		r.updateCondition(ctx, timSecret, metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Now(),
-			Reason:             "VaultConfigResolutionFailed",
-			Message:            fmt.Sprintf("Failed to resolve Vault configuration: %v", err),
-		})
-		return ctrl.Result{}, err
+		return r.handleError(ctx, timSecret, syncInterval, err, "VaultConfigResolutionFailed")
 	}
 
 	// Create Vault client
 	vaultClient, err := vault.NewClient(vaultURL, vaultToken)
 	if err != nil {
 		logger.Error(err, "Failed to create Vault client")
-		return ctrl.Result{}, err
+		return r.handleError(ctx, timSecret, syncInterval, err, "VaultClientCreationFailed")
 	}
 
 	// Get secrets from Vault
 	secretData, err := vaultClient.GetSecrets(ctx, timSecret.Spec.VaultPath)
 	if err != nil {
 		logger.Error(err, "Failed to get secrets from Vault")
-		return ctrl.Result{}, err
+		return r.handleError(ctx, timSecret, syncInterval, err, "VaultSecretFetchFailed")
 	}
 
 	// Calculate hash of secret data
@@ -148,10 +144,12 @@ func (r *TimSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		logger.Info("Restarted Deployment", "name", timSecret.Spec.DeploymentName, "namespace", namespace)
 	}
 
-	// Update status
+	// Update status - success, reset retry count
 	now := metav1.Now()
 	timSecret.Status.LastSyncTime = &now
 	timSecret.Status.SecretHash = newHash
+	timSecret.Status.RetryCount = 0 // Reset on success
+	timSecret.Status.LastError = "" // Clear error
 	timSecret.Status.Conditions = []metav1.Condition{
 		{
 			Type:               "Ready",
@@ -167,8 +165,9 @@ func (r *TimSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	// Requeue after 5 minutes to sync again
-	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+	// Requeue after configured sync interval
+	logger.Info("Secret synced successfully, requeueing", "syncInterval", syncInterval)
+	return ctrl.Result{RequeueAfter: syncInterval}, nil
 }
 
 // restartDeployment restarts a deployment by updating its annotation
@@ -233,6 +232,82 @@ func calculateHash(data map[string]string) string {
 		h.Write([]byte(v))
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+// parseSyncInterval parses the sync interval string, defaults to 5 minutes
+func (r *TimSecretReconciler) parseSyncInterval(interval string) time.Duration {
+	if interval == "" {
+		return 5 * time.Minute // Default
+	}
+
+	duration, err := time.ParseDuration(interval)
+	if err != nil {
+		// Invalid format, use default
+		return 5 * time.Minute
+	}
+
+	// Minimum 30 seconds to avoid excessive load
+	if duration < 30*time.Second {
+		return 30 * time.Second
+	}
+
+	// Maximum 1 hour to ensure timely updates
+	if duration > 1*time.Hour {
+		return 1 * time.Hour
+	}
+
+	return duration
+}
+
+// handleError handles errors with automatic retry and exponential backoff
+func (r *TimSecretReconciler) handleError(ctx context.Context, ts *secretsv1alpha1.TimSecret, syncInterval time.Duration, err error, reason string) (ctrl.Result, error) {
+	// Increment retry count
+	ts.Status.RetryCount++
+	ts.Status.LastError = err.Error()
+
+	// Calculate backoff with exponential strategy
+	// Base: 10s, Max: syncInterval
+	// Formula: min(10s * 2^retryCount, syncInterval)
+	var backoff time.Duration
+	if ts.Status.RetryCount == 0 {
+		backoff = 10 * time.Second
+	} else {
+		backoff = time.Duration(10*int64(time.Second)) << uint(ts.Status.RetryCount-1)
+	}
+
+	// Cap at sync interval
+	if backoff > syncInterval {
+		backoff = syncInterval
+	}
+
+	// Max 5 minutes for any retry
+	if backoff > 5*time.Minute {
+		backoff = 5 * time.Minute
+	}
+
+	// Update status with failure condition
+	ts.Status.Conditions = []metav1.Condition{
+		{
+			Type:               "Ready",
+			Status:             metav1.ConditionFalse,
+			LastTransitionTime: metav1.Now(),
+			Reason:             reason,
+			Message:            fmt.Sprintf("Retry %d/%d: %v", ts.Status.RetryCount, 10, err),
+		},
+	}
+
+	if updateErr := r.Status().Update(ctx, ts); updateErr != nil {
+		// If we can't update status, return both errors
+		return ctrl.Result{RequeueAfter: backoff}, fmt.Errorf("failed to update status: %w (original error: %v)", updateErr, err)
+	}
+
+	// Log retry information
+	log.FromContext(ctx).Info("Retrying after error",
+		"retryCount", ts.Status.RetryCount,
+		"backoff", backoff,
+		"error", err.Error())
+
+	return ctrl.Result{RequeueAfter: backoff}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
