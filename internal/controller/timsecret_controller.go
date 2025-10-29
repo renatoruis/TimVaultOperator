@@ -103,17 +103,21 @@ func (r *TimSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
+	// Check if secret data has changed
+	secretChanged := timSecret.Status.SecretHash != newHash
+
 	// Convert map[string]string to map[string][]byte
 	secretDataBytes := make(map[string][]byte)
 	for k, v := range secretData {
 		secretDataBytes[k] = []byte(v)
 	}
 
-	secret.Data = secretDataBytes
-	secret.Type = corev1.SecretTypeOpaque
-
+	// Create or update Secret only if it doesn't exist or data changed
 	if !secretExists {
 		// Create new secret
+		secret.Data = secretDataBytes
+		secret.Type = corev1.SecretTypeOpaque
+
 		if err := ctrl.SetControllerReference(timSecret, secret, r.Scheme); err != nil {
 			logger.Error(err, "Failed to set controller reference")
 			return ctrl.Result{}, err
@@ -123,17 +127,19 @@ func (r *TimSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{}, err
 		}
 		logger.Info("Created Secret", "name", secret.Name, "namespace", secret.Namespace)
-	} else {
-		// Update existing secret
+	} else if secretChanged {
+		// Update existing secret ONLY if data changed
+		secret.Data = secretDataBytes
+		secret.Type = corev1.SecretTypeOpaque
+
 		if err := r.Update(ctx, secret); err != nil {
 			logger.Error(err, "Failed to update Secret")
 			return ctrl.Result{}, err
 		}
 		logger.Info("Updated Secret", "name", secret.Name, "namespace", secret.Namespace)
+	} else {
+		logger.Info("Secret data unchanged, skipping update", "name", secret.Name, "namespace", secret.Namespace)
 	}
-
-	// Check if secret data has changed
-	secretChanged := timSecret.Status.SecretHash != newHash
 
 	// Restart deployment if secret changed and deployment name is specified
 	if secretChanged && timSecret.Spec.DeploymentName != "" {
