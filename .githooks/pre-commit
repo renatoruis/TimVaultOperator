@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# TimVault Operator Pre-Commit Hook
+# This hook regenerates CRDs from Go types before committing
+
+set -e
+
+echo "🔍 Pre-commit: Checking for API changes..."
+
+# Check if any Go API files were modified
+API_FILES_CHANGED=$(git diff --cached --name-only | grep -E '^api/.*\.go$' || true)
+
+if [ -n "$API_FILES_CHANGED" ]; then
+    echo "📝 API files changed, regenerating CRDs..."
+    
+    # Run CRD generation script
+    bash scripts/generate-crds.sh
+    
+    # Check if CRDs were modified
+    CRD_CHANGES=$(git diff --name-only config/crd/*.yaml || true)
+    
+    if [ -n "$CRD_CHANGES" ]; then
+        echo "⚠️  CRDs were updated. Adding to commit..."
+        git add config/crd/*.yaml
+        echo "✅ CRDs added to commit"
+    else
+        echo "✅ CRDs are already up to date"
+    fi
+else
+    echo "✅ No API changes detected, skipping CRD generation"
+fi
+
+echo "✅ Pre-commit checks passed!"
+

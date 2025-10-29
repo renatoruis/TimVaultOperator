@@ -265,14 +265,31 @@ func (r *TimSecretReconciler) handleError(ctx context.Context, ts *secretsv1alph
 	ts.Status.RetryCount++
 	ts.Status.LastError = err.Error()
 
+	// Cap retry count to prevent overflow (max 20 retries before resetting)
+	const maxRetries = 20
+	if ts.Status.RetryCount > maxRetries {
+		ts.Status.RetryCount = maxRetries
+	}
+
 	// Calculate backoff with exponential strategy
-	// Base: 10s, Max: syncInterval
-	// Formula: min(10s * 2^retryCount, syncInterval)
+	// Base: 10s, Max: syncInterval or 5 minutes
+	// Formula: 10s * 2^(min(retryCount-1, 8))
+	// Capped at 8 to prevent overflow: 10s * 256 = 2560s = ~42 minutes
 	var backoff time.Duration
-	if ts.Status.RetryCount == 0 {
+	exponent := ts.Status.RetryCount - 1
+	if exponent > 8 {
+		exponent = 8 // Cap exponent to prevent overflow
+	}
+
+	if exponent <= 0 {
 		backoff = 10 * time.Second
 	} else {
-		backoff = time.Duration(10*int64(time.Second)) << uint(ts.Status.RetryCount-1)
+		backoff = time.Duration(10*int64(time.Second)) * (1 << uint(exponent))
+	}
+
+	// Ensure minimum backoff of 10 seconds
+	if backoff < 10*time.Second {
+		backoff = 10 * time.Second
 	}
 
 	// Cap at sync interval
@@ -292,7 +309,7 @@ func (r *TimSecretReconciler) handleError(ctx context.Context, ts *secretsv1alph
 			Status:             metav1.ConditionFalse,
 			LastTransitionTime: metav1.Now(),
 			Reason:             reason,
-			Message:            fmt.Sprintf("Retry %d/%d: %v", ts.Status.RetryCount, 10, err),
+			Message:            fmt.Sprintf("Retry %d (max %d): %v", ts.Status.RetryCount, maxRetries, err),
 		},
 	}
 

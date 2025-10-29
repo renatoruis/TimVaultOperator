@@ -1,5 +1,8 @@
 # TimVault Operator
 
+![GitHub Release](https://img.shields.io/github/v/release/renatoruis/TimVaultOperator)
+
+
 A simple and powerful Kubernetes operator exclusively designed to work with HashiCorp Vault. TimVault Operator synchronizes secrets from Vault to Kubernetes Secrets and automatically restarts deployments when secrets change.
 
 > **Note:** This is NOT the External Secrets Operator. This is TimVault Operator - a dedicated, lightweight solution for Vault secret management.
@@ -441,12 +444,19 @@ kubectl get timsecretconfig vault-config -n vault-system
 - kubectl
 - Access to a Kubernetes cluster
 
-### Local Development
+### Setup Development Environment
 
 ```bash
 # Install dependencies
 go mod download
 
+# Install Git hooks (auto-generates CRDs on commit)
+bash scripts/install-git-hooks.sh
+```
+
+### Local Development
+
+```bash
 # Run tests
 go test ./...
 
@@ -460,6 +470,31 @@ make build
 make fmt
 make vet
 ```
+
+### Generating CRDs
+
+When you modify API types in `api/v1alpha1/`, CRDs need to be regenerated:
+
+**Automatic (Recommended):**
+- Git pre-commit hook automatically regenerates CRDs
+- Just commit your changes normally
+
+**Manual:**
+```bash
+# Generate CRDs only
+make manifests
+
+# Generate deepcopy code only
+make generate
+
+# Generate everything
+make generate-all
+```
+
+The pre-commit hook will:
+1. Detect changes to `api/` files
+2. Regenerate CRDs automatically
+3. Add updated CRDs to your commit
 
 ### Contributing
 

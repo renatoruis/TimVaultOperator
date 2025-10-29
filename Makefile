@@ -33,6 +33,19 @@ test: fmt vet ## Run tests.
 
 ##@ Build
 
+.PHONY: manifests
+manifests: ## Generate CRDs from Go types
+	@echo "📝 Generating CRDs..."
+	@bash scripts/generate-crds.sh
+
+.PHONY: generate
+generate: ## Generate deepcopy code
+	@echo "📝 Generating deepcopy code..."
+	@controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
+
+.PHONY: generate-all
+generate-all: generate manifests ## Generate all code and manifests
+
 .PHONY: build
 build: fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
