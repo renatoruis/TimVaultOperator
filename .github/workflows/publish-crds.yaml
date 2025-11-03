@@ -39,7 +39,7 @@ jobs:
           cp config/crd/timsecretconfig-crd.yaml dist/
 
       - name: Upload CRDs as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v5
         with:
           name: crds
           path: dist/
